@@ -14,8 +14,9 @@ import java.sql.Statement;
 
 public final class AttachmentSchema {
     // These are stolen from TransactionType, which is bad
-    // There is undoubtedly a better, safer way to do this,
+    // There is undoubtedly a better, safer way to check for transaction type,
     // but I don't have the java knowledge to do this.
+    // Checking for instance type on result of getTransactionType?
     private static final byte TYPE_PAYMENT = 0;
     private static final byte TYPE_MESSAGING = 1;
     private static final byte TYPE_COLORED_COINS = 2;
