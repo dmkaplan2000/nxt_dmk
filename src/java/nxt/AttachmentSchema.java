@@ -4,6 +4,8 @@ import nxt.util.Convert;
 import nxt.util.DbIterator;
 import nxt.util.Logger;
 
+import java.sql.Array;
+import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -11,6 +13,23 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class AttachmentSchema {
+    // These are stolen from TransactionType, which is bad
+    // There is undoubtedly a better, safer way to do this,
+    // but I don't have the java knowledge to do this.
+    private static final byte TYPE_PAYMENT = 0;
+    private static final byte TYPE_MESSAGING = 1;
+    private static final byte TYPE_COLORED_COINS = 2;
+    private static final byte SUBTYPE_PAYMENT_ORDINARY_PAYMENT = 0;
+    private static final byte SUBTYPE_MESSAGING_ARBITRARY_MESSAGE = 0;
+    private static final byte SUBTYPE_MESSAGING_ALIAS_ASSIGNMENT = 1;
+    private static final byte SUBTYPE_MESSAGING_POLL_CREATION = 2;
+    private static final byte SUBTYPE_MESSAGING_VOTE_CASTING = 3;
+    private static final byte SUBTYPE_COLORED_COINS_ASSET_ISSUANCE = 0;
+    private static final byte SUBTYPE_COLORED_COINS_ASSET_TRANSFER = 1;
+    private static final byte SUBTYPE_COLORED_COINS_ASK_ORDER_PLACEMENT = 2;
+    private static final byte SUBTYPE_COLORED_COINS_BID_ORDER_PLACEMENT = 3;
+    private static final byte SUBTYPE_COLORED_COINS_ASK_ORDER_CANCELLATION = 4;
+    private static final byte SUBTYPE_COLORED_COINS_BID_ORDER_CANCELLATION = 5;
 
     private static void apply(String sql) {
         try (Connection con = Db.getConnection()) {
@@ -81,7 +100,7 @@ public final class AttachmentSchema {
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
 	      ", name VARCHAR NOT NULL" +
 	      ", description VARCHAR" +
-	      ", options VARCHAR[]" +
+	      ", options ARRAY" +
 	      ", min_number_of_options TINYINT" +
 	      ", max_number_of_options TINYINT" +
 	      ", options_are_binary BOOLEAN" +
@@ -95,7 +114,7 @@ public final class AttachmentSchema {
 	      "CREATE TABLE IF NOT EXISTS attachment.messaging_vote_casting (" +
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
 	      ", id BIGINT NOT NULL" +
-	      ", vote TINYINT[]" +
+	      ", vote VARBINARY" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ", FOREIGN KEY (id) REFERENCES attachment.messaging_poll_creation(transaction_id)" + 
@@ -166,10 +185,10 @@ public final class AttachmentSchema {
 	apply(con,
 	      "CREATE TABLE IF NOT EXISTS attachment.colored_coins_ask_order_cancellation (" +
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
-	      ", order BIGINT NOT NULL" +
+	      ", order_id BIGINT NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      ", FOREIGN KEY (order) REFERENCES attachment.colored_coins_ask_order_placement(transaction_id)" + 
+	      ", FOREIGN KEY (order_id) REFERENCES attachment.colored_coins_ask_order_placement(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -179,10 +198,10 @@ public final class AttachmentSchema {
 	apply(con,
 	      "CREATE TABLE IF NOT EXISTS attachment.colored_coins_bid_order_cancellation (" +
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
-	      ", order BIGINT NOT NULL" +
+	      ", order_id BIGINT NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      ", FOREIGN KEY (order) REFERENCES attachment.colored_coins_bid_order_placement(transaction_id)" + 
+	      ", FOREIGN KEY (order_id) REFERENCES attachment.colored_coins_bid_order_placement(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -290,131 +309,158 @@ public final class AttachmentSchema {
     private static void insert(Connection con, Boolean commitUpdate) {
 	// Use table-specific prepared statements for speed
 
-	try (Statement stmt = con.createStatement("SELECT id, type, subtype, attachment FROM public.transaction " + 
-						  "WHERE attachment IS NOT NULL");
+	try (Statement stmt = con.createStatement();
 	     PreparedStatement p_messaging_arbitrary_message=
 	     con.prepareStatement("INSERT INTO attachment.messaging_arbitrary_message" +
+				  " (transaction_id,message) " +
 				  " VALUES (?,?)");
 	     PreparedStatement p_messaging_alias_assignment=
 	     con.prepareStatement("INSERT INTO attachment.messaging_alias_assignment" +
+				  " (transaction_id,name,uri) " +
 				  " VALUES (?,?,?)");
 	     PreparedStatement p_messaging_poll_creation=
 	     con.prepareStatement("INSERT INTO attachment.messaging_poll_creation" +
+				  " (transaction_id,name,description,options,min_number_of_options,max_number_of_options,options_are_binary) " +
 				  " VALUES (?,?,?,?,?,?,?)");
 	     PreparedStatement p_messaging_vote_casting=
 	     con.prepareStatement("INSERT INTO attachment.messaging_vote_casting" +
+				  "(transaction_id,id,vote)" +
 				  " VALUES (?,?,?)");
 	     PreparedStatement p_colored_coins_asset_issuance=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_asset_issuance" +
+				  "(transaction_id,name,description,quantity)" +
 				  " VALUES (?,?,?,?)");
 	     PreparedStatement p_colored_coins_asset_transfer=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_asset_transfer" +
+				  "(transaction_id,asset,quantity)" +
 				  " VALUES (?,?,?)");
 	     PreparedStatement p_colored_coins_ask_order_placement=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_ask_order_placement" +
+				  "(transaction_id,asset,quantity,price)" +
 				  " VALUES (?,?,?,?)");
 	     PreparedStatement p_colored_coins_bid_order_placement=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_bid_order_placement" +
+				  "(transaction_id,asset,quantity,price)" +
 				  " VALUES (?,?,?,?)");
 	     PreparedStatement p_colored_coins_ask_order_cancellation=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_ask_order_cancellation" +
+				  "(transaction_id,order_id)" +
 				  " VALUES (?,?)");
 	     PreparedStatement p_colored_coins_bid_order_cancellation=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_bid_order_cancellation" +
+				  "(transaction_id,order_id)" +
 				  " VALUES (?,?)")
 	     ) {
-		ResultSet rs = stmt.executeQuery();
+		ResultSet rs = stmt.executeQuery("SELECT id, type, subtype, attachment FROM public.transaction " + 
+						  "WHERE attachment IS NOT NULL");
 
 		while (rs.next()) {
 		    long id = rs.getLong("id");
 		    byte type = rs.getByte("type");
 		    byte subtype = rs.getByte("subtype");
-		    Attachment a = (Attachment)rs.getObject("attachment");
 
 		    switch (type) {
-		    case TransactionType.TYPE_MESSAGING:
+		    case TYPE_MESSAGING:
 			switch (subtype) {
-			case TransactionType.SUBTYPE_MESSAGING_ARBITRARY_MESSAGE:
-			    CLOB c = conn.createClob();
-			    c.setString(1,Convert.toHexString(a.getMessage()));
+			case SUBTYPE_MESSAGING_ARBITRARY_MESSAGE:
+			    Attachment.MessagingArbitraryMessage mam = 
+				(Attachment.MessagingArbitraryMessage)rs.getObject("attachment");
+			    Clob c = con.createClob();
+			    c.setString(1,Convert.toHexString(mam.getMessage()));
 			    p_messaging_arbitrary_message.setLong(1,id);
 			    p_messaging_arbitrary_message.setClob(2,c);
 			    p_messaging_arbitrary_message.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_MESSAGING_ALIAS_ASSIGNMENT:
+			case SUBTYPE_MESSAGING_ALIAS_ASSIGNMENT:
+			    Attachment.MessagingAliasAssignment maa = 
+				(Attachment.MessagingAliasAssignment)rs.getObject("attachment");
 			    p_messaging_alias_assignment.setLong(1,id);
-			    p_messaging_alias_assignment.setString(2,a.getAliasName());
-			    p_messaging_alias_assignment.setString(3,a.getAliasURI());
+			    p_messaging_alias_assignment.setString(2,maa.getAliasName());
+			    p_messaging_alias_assignment.setString(3,maa.getAliasURI());
 			    p_messaging_alias_assignment.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_MESSAGING_POLL_CREATION:
+			case SUBTYPE_MESSAGING_POLL_CREATION:
+			    Attachment.MessagingPollCreation mpc = 
+				(Attachment.MessagingPollCreation)rs.getObject("attachment");
 			    p_messaging_poll_creation.setLong(1,id);
-			    p_messaging_poll_creation.setString(2,a.getPollName());
-			    p_messaging_poll_creation.setString(3,a.getPollDescription());
-			    p_messaging_poll_creation.setArray(4,a.getPollOptions()); // Not sure about this
-			    p_messaging_poll_creation.setByte(5,a.getMinNumberOfOptions());	
-			    p_messaging_poll_creation.setByte(6,a.getMaxNumberOfOptions());
-			    p_messaging_poll_creation.setBoolean(7,a.isOptionsAreBinary());
+			    p_messaging_poll_creation.setString(2,mpc.getPollName());
+			    p_messaging_poll_creation.setString(3,mpc.getPollDescription());
+			    Array sqlArray = con.createArrayOf("String", mpc.getPollOptions());
+			    p_messaging_poll_creation.setArray(4,sqlArray);
+			    p_messaging_poll_creation.setByte(5,mpc.getMinNumberOfOptions());	
+			    p_messaging_poll_creation.setByte(6,mpc.getMaxNumberOfOptions());
+			    p_messaging_poll_creation.setBoolean(7,mpc.isOptionsAreBinary());
 			    p_messaging_poll_creation.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_MESSAGING_VOTE_CASTING:
+			case SUBTYPE_MESSAGING_VOTE_CASTING:
+			    Attachment.MessagingVoteCasting mvc = 
+				(Attachment.MessagingVoteCasting)rs.getObject("attachment");
 			    p_messaging_vote_casting.setLong(1,id);
-			    p_messaging_vote_casting.setLong(2,a.getPollId());
-			    p_messaging_vote_casting.setBytes(3,a.getPollVote());
+			    p_messaging_vote_casting.setLong(2,mvc.getPollId());
+			    p_messaging_vote_casting.setBytes(3,mvc.getPollVote());
 			    p_messaging_vote_casting.executeUpdate();			    
 			    break;
 			default:
 			    throw new RuntimeException("Unknown transaction subtype");
-			    break;
 			}
 			break;
-		    case TransactionType.TYPE_COLORED_COINS:
+		    case TYPE_COLORED_COINS:
 			switch (subtype) {
-			case TransactionType.SUBTYPE_COLORED_COINS_ASSET_ISSUANCE:
-			    p_messaging_colored_coins_asset_issuance.setLong(1,id);
-			    p_messaging_colored_coins_asset_issuance.setString(2,a.getName());
-			    p_messaging_colored_coins_asset_issuance.setString(3,a.getDescription());
-			    p_messaging_colored_coins_asset_issuance.setInt(4,a.getQuantity());
-			    p_messaging_colored_coins_asset_issuance.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_ASSET_ISSUANCE:
+			    Attachment.ColoredCoinsAssetIssuance ccai = 
+				(Attachment.ColoredCoinsAssetIssuance)rs.getObject("attachment");
+			    p_colored_coins_asset_issuance.setLong(1,id);
+			    p_colored_coins_asset_issuance.setString(2,ccai.getName());
+			    p_colored_coins_asset_issuance.setString(3,ccai.getDescription());
+			    p_colored_coins_asset_issuance.setInt(4,ccai.getQuantity());
+			    p_colored_coins_asset_issuance.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_COLORED_COINS_ASSET_TRANSFER:
-			    p_messaging_colored_coins_asset_transfer.setLong(1,id);
-			    p_messaging_colored_coins_asset_transfer.setLong(2,a.getAssetId());
-			    p_messaging_colored_coins_asset_transfer.setInt(3,a.getQuantity());
-			    p_messaging_colored_coins_asset_transfer.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_ASSET_TRANSFER:
+			    Attachment.ColoredCoinsAssetTransfer ccat = 
+				(Attachment.ColoredCoinsAssetTransfer)rs.getObject("attachment");
+			    p_colored_coins_asset_transfer.setLong(1,id);
+			    p_colored_coins_asset_transfer.setLong(2,ccat.getAssetId());
+			    p_colored_coins_asset_transfer.setInt(3,ccat.getQuantity());
+			    p_colored_coins_asset_transfer.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_COLORED_COINS_ASK_ORDER_PLACEMENT:
-			    p_messaging_colored_coins_ask_order_placement.setLong(1,id);
-			    p_messaging_colored_coins_ask_order_placement.setLong(2,a.getAssetId());
-			    p_messaging_colored_coins_ask_order_placement.setInt(3,a.getQuantity());
-			    p_messaging_colored_coins_ask_order_placement.setLong(4,a.getPrice());
-			    p_messaging_colored_coins_ask_order_placement.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_ASK_ORDER_PLACEMENT:
+			    Attachment.ColoredCoinsAskOrderPlacement ccaop = 
+				(Attachment.ColoredCoinsAskOrderPlacement)rs.getObject("attachment");
+			    p_colored_coins_ask_order_placement.setLong(1,id);
+			    p_colored_coins_ask_order_placement.setLong(2,ccaop.getAssetId());
+			    p_colored_coins_ask_order_placement.setInt(3,ccaop.getQuantity());
+			    p_colored_coins_ask_order_placement.setLong(4,ccaop.getPrice());
+			    p_colored_coins_ask_order_placement.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_COLORED_COINS_BID_ORDER_PLACEMENT:
-			    p_messaging_colored_coins_bid_order_placement.setLong(1,id);
-			    p_messaging_colored_coins_bid_order_placement.setLong(2,a.getAssetId());
-			    p_messaging_colored_coins_bid_order_placement.setInt(3,a.getQuantity());
-			    p_messaging_colored_coins_bid_order_placement.setLong(4,a.getPrice());
-			    p_messaging_colored_coins_bid_order_placement.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_BID_ORDER_PLACEMENT:
+			    Attachment.ColoredCoinsBidOrderPlacement ccbop = 
+				(Attachment.ColoredCoinsBidOrderPlacement)rs.getObject("attachment");
+			    p_colored_coins_bid_order_placement.setLong(1,id);
+			    p_colored_coins_bid_order_placement.setLong(2,ccbop.getAssetId());
+			    p_colored_coins_bid_order_placement.setInt(3,ccbop.getQuantity());
+			    p_colored_coins_bid_order_placement.setLong(4,ccbop.getPrice());
+			    p_colored_coins_bid_order_placement.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_COLORED_COINS_ASK_ORDER_CANCELLATION:
-			    p_messaging_colored_coins_ask_order_cancellation.setLong(1,id);
-			    p_messaging_colored_coins_ask_order_cancellation.setLong(2,a.getOrderId());
-			    p_messaging_colored_coins_ask_order_cancellation.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_ASK_ORDER_CANCELLATION:
+			    Attachment.ColoredCoinsAskOrderCancellation ccaoc = 
+				(Attachment.ColoredCoinsAskOrderCancellation)rs.getObject("attachment");
+			    p_colored_coins_ask_order_cancellation.setLong(1,id);
+			    p_colored_coins_ask_order_cancellation.setLong(2,ccaoc.getOrderId());
+			    p_colored_coins_ask_order_cancellation.executeUpdate();			    
 			    break;
-			case TransactionType.SUBTYPE_COLORED_COINS_BID_ORDER_CANCELLATION:
-			    p_messaging_colored_coins_bid_order_cancellation.setLong(1,id);
-			    p_messaging_colored_coins_bid_order_cancellation.setLong(2,a.getOrderId());
-			    p_messaging_colored_coins_bid_order_cancellation.executeUpdate();			    
+			case SUBTYPE_COLORED_COINS_BID_ORDER_CANCELLATION:
+			    Attachment.ColoredCoinsBidOrderCancellation ccboc = 
+				(Attachment.ColoredCoinsBidOrderCancellation)rs.getObject("attachment");
+			    p_colored_coins_bid_order_cancellation.setLong(1,id);
+			    p_colored_coins_bid_order_cancellation.setLong(2,ccboc.getOrderId());
+			    p_colored_coins_bid_order_cancellation.executeUpdate();			    
 			    break;
 			default:
 			    throw new RuntimeException("Unknown transaction subtype");
-			    break;
 			}
 			break;
 		    default:
 			throw new RuntimeException("Unknown transaction type");
-			break;
 		    }
 		}
 	    } catch (SQLException e) {
