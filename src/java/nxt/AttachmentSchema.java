@@ -5,7 +5,6 @@ import nxt.util.DbIterator;
 import nxt.util.Logger;
 
 import java.sql.Array;
-import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -78,7 +77,7 @@ public final class AttachmentSchema {
 	apply(con,
 	      "CREATE TABLE IF NOT EXISTS attachment.messaging_arbitrary_message (" +
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY " +
-	      ", message CLOB NOT NULL" +
+	      ", message VARBINARY NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
@@ -141,6 +140,7 @@ public final class AttachmentSchema {
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
 	      ", asset BIGINT NOT NULL" +
 	      ", quantity INT NOT NULL" +
+	      ", comment VARCHAR NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      // Not sure if this key could point to attachment.colored_coins_asset_issuance(transaction_id)
@@ -333,8 +333,8 @@ public final class AttachmentSchema {
 				  " VALUES (?,?,?,?)");
 	     PreparedStatement p_colored_coins_asset_transfer=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_asset_transfer" +
-				  "(transaction_id,asset,quantity)" +
-				  " VALUES (?,?,?)");
+				  "(transaction_id,asset,quantity,comment)" +
+				  " VALUES (?,?,?,?)");
 	     PreparedStatement p_colored_coins_ask_order_placement=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_ask_order_placement" +
 				  "(transaction_id,asset,quantity,price)" +
@@ -366,10 +366,8 @@ public final class AttachmentSchema {
 			case SUBTYPE_MESSAGING_ARBITRARY_MESSAGE:
 			    Attachment.MessagingArbitraryMessage mam = 
 				(Attachment.MessagingArbitraryMessage)rs.getObject("attachment");
-			    Clob c = con.createClob();
-			    c.setString(1,Convert.toHexString(mam.getMessage()));
 			    p_messaging_arbitrary_message.setLong(1,id);
-			    p_messaging_arbitrary_message.setClob(2,c);
+			    p_messaging_arbitrary_message.setBytes(2,mam.getMessage());
 			    p_messaging_arbitrary_message.executeUpdate();			    
 			    break;
 			case SUBTYPE_MESSAGING_ALIAS_ASSIGNMENT:
@@ -422,6 +420,7 @@ public final class AttachmentSchema {
 			    p_colored_coins_asset_transfer.setLong(1,id);
 			    p_colored_coins_asset_transfer.setLong(2,ccat.getAssetId());
 			    p_colored_coins_asset_transfer.setInt(3,ccat.getQuantity());
+			    p_colored_coins_asset_transfer.setString(4,ccat.getComment());
 			    p_colored_coins_asset_transfer.executeUpdate();			    
 			    break;
 			case SUBTYPE_COLORED_COINS_ASK_ORDER_PLACEMENT:
