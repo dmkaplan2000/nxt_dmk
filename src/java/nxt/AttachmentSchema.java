@@ -333,13 +333,11 @@ public final class AttachmentSchema {
 				  "(transaction_id,order_id)" +
 				  " VALUES (?,?)")
 	     ) {
-		ResultSet rs = stmt.executeQuery("SELECT id, type, subtype, attachment FROM public.transaction " + 
+		ResultSet rs = stmt.executeQuery("SELECT id, attachment FROM public.transaction " + 
 						  "WHERE attachment IS NOT NULL");
 
 		while (rs.next()) {
 		    long id = rs.getLong("id");
-		    byte type = rs.getByte("type");
-		    byte subtype = rs.getByte("subtype");
 		    Attachment a = (Attachment)rs.getObject("attachment");		    
 
 		    // This if instanceof isn't very elegant, but is perfectly legal
@@ -434,9 +432,7 @@ public final class AttachmentSchema {
 	
     }
 
-    public static void main(String[] args) throws Exception {
-        Db.init();
-
+    private static void init() {
         try (Connection con = Db.getConnection()) {
 		drop(con,false); // Start from scratch
 		create(con,false);
@@ -451,6 +447,12 @@ public final class AttachmentSchema {
         } catch (SQLException e) {
             throw new RuntimeException("Can't get DB connection", e);
         }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Db.init();
+
+	init();
 
 	Db.shutdown();
     }
