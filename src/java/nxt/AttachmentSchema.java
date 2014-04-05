@@ -53,6 +53,23 @@ public final class AttachmentSchema {
 
 	// Create attachment schema
 	apply(con,"CREATE SCHEMA IF NOT EXISTS attachment",false);
+
+	// In these tables, more could be done with foreign keys. For
+	// example: In addition to pointing transaction_id to
+	// transaction(id), one could also point
+	// (transaction_id,type,subtype) to
+	// transaction(id,type,subtype), where type and subtype of the
+	// attachment tables would be columns with default values set
+	// to the expected type and subtype.  I haven't done this as
+	// this would add keys and columns and therefore size to the
+	// blockchain DB, but this could be done if one wants the
+	// database to do more to be self validating.
+
+	// Also, these tables have no redundant columns, such as
+	// sender_id or recipient_id.  I personally prefer to use
+	// views with appropriate indexing of join columns instead of
+	// adding redundant columns (less redundancy, easier DB
+	// maintenance), but they could easily added if desired.
 	
 	// Create table for messages
 	apply(con,
@@ -94,11 +111,11 @@ public final class AttachmentSchema {
 	apply(con,
 	      "CREATE TABLE IF NOT EXISTS attachment.messaging_vote_casting (" +
 	      "transaction_id BIGINT NOT NULL PRIMARY KEY" +
-	      ", id BIGINT NOT NULL" +
+	      ", poll_id BIGINT NOT NULL" +
 	      ", vote VARBINARY" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      ", FOREIGN KEY (id) REFERENCES attachment.messaging_poll_creation(transaction_id)" + 
+	      ", FOREIGN KEY (poll_id) REFERENCES attachment.messaging_poll_creation(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -124,8 +141,8 @@ public final class AttachmentSchema {
 	      ", comment VARCHAR NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      // Not sure if this key could point to attachment.colored_coins_asset_issuance(transaction_id)
-	      ", FOREIGN KEY (asset) REFERENCES public.transaction(id)" + 
+	      // As far as I can tell, asset should point to an entry in asset_issuance
+	      ", FOREIGN KEY (asset) REFERENCES attachment.colored_coins_asset_issuance(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -140,8 +157,8 @@ public final class AttachmentSchema {
 	      ", price BIGINT NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      // Not sure if this key could point to attachment.colored_coins_asset_issuance(transaction_id)
-	      ", FOREIGN KEY (asset) REFERENCES public.transaction(id)" + 
+	      // As far as I can tell, asset should point to an entry in asset_issuance
+	      ", FOREIGN KEY (asset) REFERENCES attachment.colored_coins_asset_issuance(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -156,8 +173,8 @@ public final class AttachmentSchema {
 	      ", price BIGINT NOT NULL" +
 	      ", FOREIGN KEY (transaction_id) REFERENCES public.transaction(id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
-	      // Not sure if this key could point to attachment.colored_coins_asset_issuance(transaction_id)
-	      ", FOREIGN KEY (asset) REFERENCES public.transaction(id)" + 
+	      // As far as I can tell, asset should point to an entry in asset_issuance
+	      ", FOREIGN KEY (asset) REFERENCES attachment.colored_coins_asset_issuance(transaction_id)" + 
 	      " ON DELETE CASCADE ON UPDATE CASCADE" +
 	      ")",
 	      false);
@@ -288,6 +305,94 @@ public final class AttachmentSchema {
 	
     }
 
+    private static void viewsFullTransaction(Connection con, Boolean commitUpdate) {
+	// Views instead of duplicate columns
+
+	// Transaction view for messages
+	apply(con,
+	      "CREATE VIEW attachment.trans_messaging_arbitrary_message AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.messaging_arbitrary_message a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for aliases
+	apply(con,
+	      "CREATE VIEW attachment.trans_messaging_alias_assignment AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.messaging_alias_assignment a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for poll creation
+	apply(con,
+	      "CREATE VIEW attachment.trans_messaging_poll_creation AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.messaging_poll_creation a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for poll vote
+	apply(con,
+	      "CREATE VIEW attachment.trans_messaging_vote_casting AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.messaging_vote_casting a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for asset issuance
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_asset_issuance AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_asset_issuance a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for asset transfer
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_asset_transfer AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_asset_transfer a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for asset ask order placement
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_ask_order_placement AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_ask_order_placement a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for asset bid order placement
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_bid_order_placement AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_bid_order_placement a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for ask cancel order placement
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_ask_order_cancellation AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_ask_order_cancellation a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// Transaction view for big cancel order placement
+	apply(con,
+	      "CREATE VIEW attachment.trans_colored_coins_bid_order_cancellation AS " +
+	      "SELECT t.*, a.* FROM " +
+	      "public.transaction t join attachment.colored_coins_bid_order_cancellation a " +
+	      "ON t.id=a.transaction_id",
+	      false);
+	
+	// One commit for all if desired
+	apply(con,null,commitUpdate);
+	
+    }
+
     private static void insert(Connection con, Boolean commitUpdate) {
 	// Use table-specific prepared statements for speed
 
@@ -302,11 +407,12 @@ public final class AttachmentSchema {
 				  " VALUES (?,?,?)");
 	     PreparedStatement p_messaging_poll_creation=
 	     con.prepareStatement("INSERT INTO attachment.messaging_poll_creation" +
-				  " (transaction_id,name,description,options,min_number_of_options,max_number_of_options,options_are_binary) " +
+				  " (transaction_id,name,description,options,min_number_of_options," +
+				  "max_number_of_options,options_are_binary) " +
 				  " VALUES (?,?,?,?,?,?,?)");
 	     PreparedStatement p_messaging_vote_casting=
 	     con.prepareStatement("INSERT INTO attachment.messaging_vote_casting" +
-				  "(transaction_id,id,vote)" +
+				  "(transaction_id,poll_id,vote)" +
 				  " VALUES (?,?,?)");
 	     PreparedStatement p_colored_coins_asset_issuance=
 	     con.prepareStatement("INSERT INTO attachment.colored_coins_asset_issuance" +
@@ -438,7 +544,8 @@ public final class AttachmentSchema {
 		create(con,false);
 		//delete(con,false);
 		insert(con,false);
-		//index(con,false);
+		viewsFullTransaction(con,false);
+		//indexes(con,false);
 		//foreignKeys(con,false);
 
 		// commit once for all		
