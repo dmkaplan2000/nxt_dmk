@@ -1,6 +1,6 @@
 # nxt_dmk - Fork of NXT by DMK for me to play with
 
-This is a fork of the nxt server maintained by Jean-Luc Picard on bitbucket. It is not intended to be used by anyone in production situations, but rather is for me to play with and test new features.  All my new features are found on the branch feature/dmk.
+This is a fork of the nxt server maintained by Jean-Luc Picard on [bitbucket](https://bitbucket.org/JeanLucPicard/nxt.git). It is not intended to be used by anyone in production situations, but rather is for me to play with and test new features.  All my new features are found on the branch `feature/dmk`.
 
 # New features
 
